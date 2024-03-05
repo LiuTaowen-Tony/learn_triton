@@ -1,0 +1,3 @@
+[submodule "bitsandbytes"]
+	path = bitsandbytes
+	url = git@github.com:LiuTaowen-Tony/bitsandbytes.git

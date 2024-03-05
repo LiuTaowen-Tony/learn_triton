@@ -7,6 +7,7 @@ from matmul_perf_model import early_config_prune, estimate_matmul_time
 
 _ordered_datatypes = [torch.int8, torch.float16, torch.bfloat16, torch.float32]
 
+FLOAT8TYPE = tl.int8
 
 def upcast_if_fp8(a):
     if "fp8" in str(a):
@@ -122,15 +123,15 @@ def _kernel(A, B, C, M, N, K,  #
         if EVEN_K:
             a = tl.load(A)
             tl.static_assert(a.dtype == tl.int8)
-            a = a.to(tl.float8e4, bitcast=True)
-            tl.static_assert(a.dtype == tl.float8e4)
+            a = a.to(FLOAT8TYPE, bitcast=True)
+            tl.static_assert(a.dtype == FLOAT8TYPE)
             a = a.to(acc_dtype)
             tl.static_assert(a.dtype == tl.float16)
-            b = tl.load(B).to(tl.float8e4, bitcast=True).to(acc_dtype)
+            b = tl.load(B).to(FLOAT8TYPE, bitcast=True).to(acc_dtype)
         else:
             k_remaining = K - k * (BLOCK_K * SPLIT_K)
-            a = tl.load(A, mask=rk[None, :] < k_remaining, other=0.).to(tl.float8e4, bitcast=True).to(acc_dtype)
-            b = tl.load(B, mask=rk[:, None] < k_remaining, other=0.).to(tl.float8e4, bitcast=True).to(acc_dtype)
+            a = tl.load(A, mask=rk[None, :] < k_remaining, other=0.).to(FLOAT8TYPE, bitcast=True).to(acc_dtype)
+            b = tl.load(B, mask=rk[:, None] < k_remaining, other=0.).to(FLOAT8TYPE, bitcast=True).to(acc_dtype)
         acc += tl.dot(a, b, out_dtype=acc_dtype)
         A += BLOCK_K * SPLIT_K * stride_ak
         B += BLOCK_K * SPLIT_K * stride_bk
@@ -202,7 +203,7 @@ def copy_kernel(input_ptr, output_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 def fp16_2_fp8(f16_tensor):
     n_elements = f16_tensor.numel()
     f8_output_tensor = torch.empty_like(f16_tensor, dtype=torch.int8)
-    f8_output = triton.reinterpret(f8_output_tensor, tl.float8e4)
+    f8_output = triton.reinterpret(f8_output_tensor, FLOAT8TYPE)
     grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
     copy_kernel[grid](f16_tensor, f8_output, n_elements, BLOCK_SIZE=1024)
     return f8_output_tensor
@@ -210,7 +211,7 @@ def fp16_2_fp8(f16_tensor):
 
 def fp8_2_fp16(f8_tensor):
     n_elements = f8_tensor.numel()
-    f8_triton = triton.reinterpret(f8_tensor, tl.float8e4)
+    f8_triton = triton.reinterpret(f8_tensor, FLOAT8TYPE)
 
     f16_output_tensor = torch.empty_like(f8_tensor, dtype=torch.float16)
     f16_output = triton.reinterpret(f16_output_tensor, tl.float16)
