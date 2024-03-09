@@ -70,7 +70,7 @@ def _int8_matmul_block_rowwise_dequantize(A, B, C, bias, state_x_ptr, state_w_pt
             stride_am, stride_ak,
             stride_bk, stride_bn,
             stride_cm, stride_cn,
-            stride_state,
+            stride_state: tl.constexpr,
             BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr,
             GROUP_M: tl.constexpr, SPLIT_K: tl.constexpr, EVEN_K: tl.constexpr,
             ACC_TYPE: tl.constexpr
@@ -100,7 +100,11 @@ def _int8_matmul_block_rowwise_dequantize(A, B, C, bias, state_x_ptr, state_w_pt
     rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
 
+    state_x_ptr = state_x_ptr + rm * stride_state
+    state_w_ptr = state_w_ptr + rn * stride_state
 
+    x_factor = tl.load(state_x_ptr)
+    w_factor = tl.load(state_w_ptr)
     # acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=ACC_TYPE)
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.int32)
     for i in range(0, tl.cdiv(K, BLOCK_K * SPLIT_K)):
@@ -112,14 +116,13 @@ def _int8_matmul_block_rowwise_dequantize(A, B, C, bias, state_x_ptr, state_w_pt
             a = tl.load(A, mask=rk[None, :] < k_remaining, other=0.)
             b = tl.load(B, mask=rk[:, None] < k_remaining, other=0.)
         result = tl.dot(a, b)
-        w_factor = tl.load(state_w_ptr + rbn * stride_state + i)[None, :]
-        x_factor = tl.load(state_x_ptr + ram * stride_state + i)[:, None]
-
-        acc = (w_factor * x_factor * acc).to(tl.int32)
+        
+        # acc += result
+        acc += (x_factor[:, None] * w_factor[None, :] * result)
         A += BLOCK_K * SPLIT_K * stride_ak
         B += BLOCK_K * SPLIT_K * stride_bk
 
-    acc = (w_factor * (x_factor * (acc * divfactor)))
+    # acc = (w_factor * (x_factor * (acc * divfactor)))
     acc = acc.to(C.dtype.element_ty)
 
     if has_bias:
@@ -136,7 +139,7 @@ def _int8_matmul_block_rowwise_dequantize(A, B, C, bias, state_x_ptr, state_w_pt
 print("there")
 
 
-def int8_matmul_block_rowwise_dequantize(a, b, state_x, state_w, bias):
+def int8_matmul_block_rowwise_dequantize(a, b, state_x, state_w, bias=None):
     divfactor = 1. / (127. * 127.)
 
     has_bias = 0 if bias is None else 1
@@ -157,13 +160,12 @@ def int8_matmul_block_rowwise_dequantize(a, b, state_x, state_w, bias):
     ACC_TYPE = tl.float32 #if a.dtype in [torch.float16, torch.bfloat16, torch.float32] else tl.int32
     # launch int8_matmul_rowwise_dequantize kernel
     grid = lambda META: (triton.cdiv(M, META['BLOCK_M']) * triton.cdiv(N, META['BLOCK_N']), META['SPLIT_K'])
-    _int8_matmul_rowwise_dequantize[grid](a, b, c, bias, state_x, state_w, M, N, K, divfactor, has_bias,
+    _int8_matmul_block_rowwise_dequantize[grid](a, b, c, bias, state_x, state_w, M, N, K, divfactor, has_bias,
                     a.stride(0), a.stride(1),
                     b.stride(0), b.stride(1),
                     c.stride(0), c.stride(1),
-                    ceil_div(K, 32),
+                    stride_state=ceil_div(K, 32),
                     GROUP_M=8, ACC_TYPE=ACC_TYPE)
-    print(_int8_matmul_rowwise_dequantize.best_config)
     return c
 
 import triton
@@ -297,7 +299,7 @@ def block_quantize_dequantize_is_close():
     print(x)
     return torch.allclose(a, x)
 
-print(block_quantize_dequantize_is_close())
+# print(block_quantize_dequantize_is_close())
 
 
 
@@ -326,12 +328,12 @@ def benchmark(M, N, K, provider):
     if provider == 'triton':
         state_x = None
         state_w = None
-        # a, state_x = quantize_rowwise(a)
-        # b, state_w = quantize_rowwise(b)
-        ms, min_ms, max_ms = triton.testing.do_bench(lambda: matmul(a, b, state_w, state_x), quantiles=quantiles) 
+        a, state_x = quantize_block_rowwise(a)
+        b, state_w = quantize_block_rowwise(b)
+        ms, min_ms, max_ms = triton.testing.do_bench(lambda: int8_matmul_block_rowwise_dequantize(a, b.t(), state_x.to(torch.int32), state_w.t().to(torch.int32)), quantiles=quantiles) 
     perf = lambda ms: 2 * M * N * K * 1e-12 / (ms * 1e-3)
     return perf(ms), perf(max_ms), perf(min_ms)
 
 
-# benchmark.run(show_plots=True, print_data=True)
+benchmark.run(show_plots=True, print_data=True)
 # benchmark.run(show_plots=True, print_data=True)

@@ -2,6 +2,7 @@ import math
 import torch
 import triton
 import triton.language as tl
+import torch.nn.functional as F
 from triton.ops.matmul_perf_model import early_config_prune, estimate_matmul_time
 
 # This is a matmul kernel based on triton.ops.matmul
@@ -103,7 +104,7 @@ def _int8_matmul_rowwise_dequantize_slow(A, B, C, bias, state_x_ptr, state_w_ptr
 
     # factors = w_factor * x_factor
     # acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=ACC_TYPE)
-    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.int32)
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float16)
     for k in range(0, tl.cdiv(K, BLOCK_K * SPLIT_K)):
         if EVEN_K:
             a = tl.load(A)
@@ -112,8 +113,8 @@ def _int8_matmul_rowwise_dequantize_slow(A, B, C, bias, state_x_ptr, state_w_ptr
             k_remaining = K - k * (BLOCK_K * SPLIT_K)
             a = tl.load(A, mask=rk[None, :] < k_remaining, other=0.)
             b = tl.load(B, mask=rk[:, None] < k_remaining, other=0.)
-        acc += tl.dot(a, b)
-        acc =  (w_factor * x_factor * (acc)).to(tl.int32)
+        result = tl.dot(a, b)
+        acc +=  (w_factor * x_factor * (result)).to(tl.float16)
 
         A += BLOCK_K * SPLIT_K * stride_ak
         B += BLOCK_K * SPLIT_K * stride_bk
@@ -361,14 +362,14 @@ def matmul(a, b, state_x=None, state_w=None, bias=None):
 @triton.testing.perf_report(
     triton.testing.Benchmark(
         x_names=['M', 'N', 'K'],  # Argument names to use as an x-axis for the plot
-        x_vals=[512 * i for i in range(10, 12, 2)],  # Different possible values for `x_name`
+        x_vals=[512 * i for i in range(2, 12, 2)],  # Different possible values for `x_name`
         line_arg='provider',  # Argument name whose value corresponds to a different line in the plot
         # Possible values for `line_arg`
-        line_vals=['cublas', 'triton', 'triton_slow'],
+        line_vals=['cublas', 'triton', 'triton_slow', 'linear'],
         # Label name for the lines
-        line_names=["cuBLAS", "Triton", 'Triton Slow'],
+        line_names=["cuBLAS", "Triton", 'Triton Slow', 'Linear'],
         # Line styles
-        styles=[('green', '-'), ('blue', '-'), ('red', '-')],
+        styles=[('green', '-'), ('blue', '-'), ('red', '-'), ('black', '-')],
         ylabel="TFLOPS",  # Label name for the y-axis
         plot_name="matmul-performance",  # Name for the plot, used also as a file name for saving the plot.
         args={},
@@ -380,6 +381,9 @@ def benchmark(M, N, K, provider):
     quantiles = [0.5, 0.2, 0.8]
     if provider == 'cublas':
         ms, min_ms, max_ms = triton.testing.do_bench(lambda: torch.matmul(a, b), quantiles=quantiles)
+    if provider == 'linear':
+        b = b.t()
+        ms, min_ms, max_ms = triton.testing.do_bench(lambda: F.linear(a, b), quantiles=quantiles)
     if provider == 'triton':
         state_x = None
         state_w = None
