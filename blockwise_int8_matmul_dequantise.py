@@ -29,26 +29,42 @@ def get_configs_io_bound():
                                                         num_stages=num_stages, num_warps=num_warps, pre_hook=init_to_zero('C')))
     return configs
 
+acc_torch_type = torch.float32
+types = {
+    torch.float32: tl.float32,
+    torch.float16: tl.float16,
+    torch.int32: tl.int32
+}
+acc_tensor_type = types[acc_torch_type]
 
 print("here")
 @triton.autotune(
     configs=[
         # basic configs for compute-bound matmuls
-        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 256, 'BLOCK_K': 32, 'SPLIT_K': 1}, num_stages=3, num_warps=8),
-        triton.Config({'BLOCK_M': 256, 'BLOCK_N': 128, 'BLOCK_K': 32, 'SPLIT_K': 1}, num_stages=3, num_warps=8),
-        triton.Config({'BLOCK_M': 256, 'BLOCK_N': 64, 'BLOCK_K': 32, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_M': 64, 'BLOCK_N': 256, 'BLOCK_K': 32, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 32, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 64, 'BLOCK_K': 32, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_M': 64, 'BLOCK_N': 128, 'BLOCK_K': 32, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 32, 'BLOCK_K': 32, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_M': 64, 'BLOCK_N': 32, 'BLOCK_K': 32, 'SPLIT_K': 1}, num_stages=5, num_warps=2),
+        # triton.Config({'BLOCK_M': 128, 'BLOCK_N': 256, 'BLOCK_K': 32, 'SPLIT_K': 1}, num_stages=3, num_warps=8),
+        # triton.Config({'BLOCK_M': 256, 'BLOCK_N': 128, 'BLOCK_K': 32, 'SPLIT_K': 1}, num_stages=3, num_warps=8),
+        # triton.Config({'BLOCK_M': 256, 'BLOCK_N': 64, 'BLOCK_K': 32, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
+        # triton.Config({'BLOCK_M': 64, 'BLOCK_N': 256, 'BLOCK_K': 32, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
+        # triton.Config({'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 32, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
+        # triton.Config({'BLOCK_M': 128, 'BLOCK_N': 64, 'BLOCK_K': 32, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
+        # triton.Config({'BLOCK_M': 64, 'BLOCK_N': 128, 'BLOCK_K': 32, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
+        # triton.Config({'BLOCK_M': 128, 'BLOCK_N': 32, 'BLOCK_K': 32, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
+        # triton.Config({'BLOCK_M': 64, 'BLOCK_N': 32, 'BLOCK_K': 32, 'SPLIT_K': 1}, num_stages=5, num_warps=2),
         # good for int8
-        # triton.Config({'BLOCK_M': 128, 'BLOCK_N': 256, 'BLOCK_K': 128, 'SPLIT_K': 1}, num_stages=3, num_warps=8),
-        # triton.Config({'BLOCK_M': 256, 'BLOCK_N': 128, 'BLOCK_K': 128, 'SPLIT_K': 1}, num_stages=3, num_warps=8),
-        # triton.Config({'BLOCK_M': 256, 'BLOCK_N': 64, 'BLOCK_K': 128, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
-        # triton.Config({'BLOCK_M': 64, 'BLOCK_N': 256, 'BLOCK_K': 128, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
-        # triton.Config({'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 128, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 256, 'BLOCK_K': 128, 'SPLIT_K': 1}, num_stages=3, num_warps=8),
+        triton.Config({'BLOCK_M': 256, 'BLOCK_N': 128, 'BLOCK_K': 128, 'SPLIT_K': 1}, num_stages=3, num_warps=8),
+        triton.Config({'BLOCK_M': 256, 'BLOCK_N': 64, 'BLOCK_K': 128, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
+        triton.Config({'BLOCK_M': 64, 'BLOCK_N': 256, 'BLOCK_K': 128, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 128, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
+        # triton.Config({'BLOCK_M': 128, 'BLOCK_N': 64, 'BLOCK_K': 64, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
+        # triton.Config({'BLOCK_M': 64, 'BLOCK_N': 128, 'BLOCK_K': 64, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
+        # triton.Config({'BLOCK_M': 128, 'BLOCK_N': 32, 'BLOCK_K': 64, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
+        # triton.Config({'BLOCK_M': 64, 'BLOCK_N': 32, 'BLOCK_K': 64, 'SPLIT_K': 1}, num_stages=5, num_warps=2),
+        # triton.Config({'BLOCK_M': 128, 'BLOCK_N': 256, 'BLOCK_K': 64, 'SPLIT_K': 1}, num_stages=3, num_warps=8),
+        # triton.Config({'BLOCK_M': 256, 'BLOCK_N': 128, 'BLOCK_K': 64, 'SPLIT_K': 1}, num_stages=3, num_warps=8),
+        # triton.Config({'BLOCK_M': 256, 'BLOCK_N': 64, 'BLOCK_K': 64, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
+        # triton.Config({'BLOCK_M': 64, 'BLOCK_N': 256, 'BLOCK_K': 64, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
+        # triton.Config({'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 64, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
         # triton.Config({'BLOCK_M': 128, 'BLOCK_N': 64, 'BLOCK_K': 64, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
         # triton.Config({'BLOCK_M': 64, 'BLOCK_N': 128, 'BLOCK_K': 64, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
         # triton.Config({'BLOCK_M': 128, 'BLOCK_N': 32, 'BLOCK_K': 64, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
@@ -66,7 +82,7 @@ print("here")
     'EVEN_K': lambda args: args['K'] % (args['BLOCK_K'] * args['SPLIT_K']) == 0,
 })
 @triton.jit
-def _int8_matmul_block_rowwise_dequantize(A, B, C, bias, state_x_ptr, state_w_ptr, M, N, K, divfactor, has_bias : tl.constexpr,
+def _int8_matmul_block64_rowwise_dequantize(A, B, C, bias, state_x_ptr, state_w_ptr, M, N, K, divfactor, has_bias : tl.constexpr,
             stride_am, stride_ak,
             stride_bk, stride_bn,
             stride_cm, stride_cn,
@@ -100,13 +116,11 @@ def _int8_matmul_block_rowwise_dequantize(A, B, C, bias, state_x_ptr, state_w_pt
     rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
 
-    state_x_ptr = state_x_ptr + rm * stride_state
-    state_w_ptr = state_w_ptr + rn * stride_state
+    state_x_ptr = state_x_ptr + ram
+    state_w_ptr = state_w_ptr + rbn
 
-    x_factor = tl.load(state_x_ptr)
-    w_factor = tl.load(state_w_ptr)
     # acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=ACC_TYPE)
-    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.int32)
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=acc_tensor_type)
     for i in range(0, tl.cdiv(K, BLOCK_K * SPLIT_K)):
         if EVEN_K:
             a = tl.load(A)
@@ -118,11 +132,15 @@ def _int8_matmul_block_rowwise_dequantize(A, B, C, bias, state_x_ptr, state_w_pt
         result = tl.dot(a, b)
         
         # acc += result
+        x_factor = tl.load(state_x_ptr)
+        w_factor = tl.load(state_w_ptr)
         acc += (x_factor[:, None] * w_factor[None, :] * result)
         A += BLOCK_K * SPLIT_K * stride_ak
         B += BLOCK_K * SPLIT_K * stride_bk
+        state_x_ptr += M
+        state_w_ptr += N
 
-    # acc = (w_factor * (x_factor * (acc * divfactor)))
+    acc = (acc * divfactor)
     acc = acc.to(C.dtype.element_ty)
 
     if has_bias:
@@ -139,7 +157,7 @@ def _int8_matmul_block_rowwise_dequantize(A, B, C, bias, state_x_ptr, state_w_pt
 print("there")
 
 
-def int8_matmul_block_rowwise_dequantize(a, b, state_x, state_w, bias=None):
+def int8_matmul_block64_rowwise_dequantize(a, b, state_x, state_w, bias=None):
     divfactor = 1. / (127. * 127.)
 
     has_bias = 0 if bias is None else 1
@@ -160,12 +178,13 @@ def int8_matmul_block_rowwise_dequantize(a, b, state_x, state_w, bias=None):
     ACC_TYPE = tl.float32 #if a.dtype in [torch.float16, torch.bfloat16, torch.float32] else tl.int32
     # launch int8_matmul_rowwise_dequantize kernel
     grid = lambda META: (triton.cdiv(M, META['BLOCK_M']) * triton.cdiv(N, META['BLOCK_N']), META['SPLIT_K'])
-    _int8_matmul_block_rowwise_dequantize[grid](a, b, c, bias, state_x, state_w, M, N, K, divfactor, has_bias,
+    compiled = _int8_matmul_block64_rowwise_dequantize[grid](a, b, c, bias, state_x, state_w, M, N, K, divfactor, has_bias,
                     a.stride(0), a.stride(1),
                     b.stride(0), b.stride(1),
                     c.stride(0), c.stride(1),
-                    stride_state=ceil_div(K, 32),
+                    stride_state=ceil_div(K, 64),
                     GROUP_M=8, ACC_TYPE=ACC_TYPE)
+    print("",end="")
     return c
 
 import triton
@@ -194,15 +213,17 @@ def _quantize_block_rowwise(
     x_ptr,
     output_ptr,
     output_maxs,
+    M: tl.constexpr,
     K: tl.constexpr,
+    FBLOCK_SIZE: tl.constexpr,
     n_elements
 ):
     pid = tl.program_id(axis=0)
     block_start = pid * K
-    offsets = block_start + tl.arange(0, 32)
-    output_maxs_offset = pid * tl.cdiv(K, 32)
+    offsets = block_start + tl.arange(0, FBLOCK_SIZE)
+    output_maxs_offset = pid 
     
-    for _ in range(0, tl.cdiv(K, 32)):
+    for _ in range(0, tl.cdiv(K, FBLOCK_SIZE)):
         row_mask = offsets < block_start + K
         x = tl.load(x_ptr + offsets, mask=row_mask)
         abs_x = tl.abs(x)
@@ -210,22 +231,66 @@ def _quantize_block_rowwise(
         output = tl.math.llrint(127. * (x / max_val))
         tl.store(output_ptr + offsets, output, mask=row_mask)
         tl.store(output_maxs + output_maxs_offset, max_val)
-        offsets += 32
-        output_maxs_offset += 1
+        offsets += FBLOCK_SIZE
+        output_maxs_offset += M
 
 def ceil_div(n, d):
     return -(n // -d)
 
-def quantize_block_rowwise(x: torch.Tensor):
+def quantize_block_rowwise(x: torch.Tensor, fblock_size=64):
     m, k = x.shape
 
     output = torch.empty(*x.shape, device=x.device, dtype=torch.int8)
-    output_maxs = torch.empty(m, ceil_div(k, 32) , device=x.device, dtype=torch.float16)
+    # output_maxs is transposed
+    output_maxs = torch.empty(ceil_div(k, fblock_size), m, device=x.device, dtype=acc_torch_type)
 
     assert x.is_cuda and output.is_cuda
     grid = lambda meta: (x.shape[0],)
     n_elements = output.numel()
-    _quantize_block_rowwise[grid](x, output, output_maxs,K=k, n_elements=n_elements)
+    _quantize_block_rowwise[grid](x, output, output_maxs, M=m, K=k, FBLOCK_SIZE=fblock_size, n_elements=n_elements)
+    return output, output_maxs
+
+def _quantize_blockwise(
+    x_ptr,
+    output_ptr,
+    output_maxs,
+    M: tl.constexpr,
+    K: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    FBLOCK_SIZE: tl.constexpr,
+    n_elements
+):
+    pid_m = tl.program_id(axis=0)
+    pid_k = tl.program_id(axis=1)
+    row_start = pid_m * K * BLOCK_M
+    ptr_start = row_start + pid_k * BLOCK_K
+    offsets = row_start + tl.arange(0, BLOCK_M)[:, None] * K + tl.arange(0, FBLOCK_SIZE)[None, :]
+    output_maxs_offset = pid 
+    
+    for _ in range(0, tl.cdiv(BLOCK_K, FBLOCK_SIZE)):
+        mask = offsets < ptr_start + BLOCK_K
+        x = tl.load(x_ptr + offsets, mask=mask)
+        abs_x = tl.abs(x)
+        max_val = tl.max(tl.where(mask, abs_x, 0), axis=0)
+        output = tl.math.llrint(127. * (x / max_val))
+        tl.store(output_ptr + offsets, output, mask=mask)
+        tl.store(output_maxs + output_maxs_offset, max_val)
+        offsets += FBLOCK_SIZE
+        output_maxs_offset += M
+
+
+def quantize_block(x: torch.Tensor, fblock_size=64):
+    m, k = x.shape
+
+    output = torch.empty(*x.shape, device=x.device, dtype=torch.int8)
+    # output_maxs is transposed
+    output_maxs = torch.empty(ceil_div(k, fblock_size), m, device=x.device, dtype=acc_torch_type)
+
+    assert x.is_cuda and output.is_cuda
+    grid = lambda META: (tl.cdiv(m, META['BLOCK_M']), tl.cdiv(k, META['BLOCK_K']))
+    n_elements = output.numel()
+    code = _quantize_blockwise[grid](x, output, output_maxs, M=m, K=k, FBLOCK_SIZE=fblock_size, n_elements=n_elements)
     return output, output_maxs
 
 
@@ -265,28 +330,31 @@ def _dequantize_block_rowwise(
     output_ptr,
     inv_127,
     K: tl.constexpr,
+    M: tl.constexpr,
+    FBLOCK_SIZE: tl.constexpr,
     n_elements,
 ):
     pid = tl.program_id(axis=0)
     block_start = pid * K
-    offsets = block_start + tl.arange(0, 32)
-    output_maxs_offset = pid * tl.cdiv(K, 32)
+    offsets = block_start + tl.arange(0, FBLOCK_SIZE)
+    output_maxs_offset = pid 
     
-    for i in range(0, tl.cdiv(K, 32)):
+    for i in range(0, tl.cdiv(K, FBLOCK_SIZE)):
         row_mask = offsets < block_start + K
         x = tl.load(x_ptr + offsets, mask=row_mask)
         max_val = tl.load(state_x + output_maxs_offset)
         output = max_val * x * inv_127
         tl.store(output_ptr + offsets, output, mask=row_mask)
-        offsets += 32
-        output_maxs_offset += 1
+        offsets += FBLOCK_SIZE
+        output_maxs_offset += M
 
-def dequantize_block_rowwise(x: torch.Tensor, state_x: torch.Tensor):
+def dequantize_block_rowwise(x: torch.Tensor, state_x: torch.Tensor, fblock_size=64):
     output = torch.empty(*x.shape, device=x.device, dtype=torch.float16)
+    M, K = x.shape
     assert x.is_cuda and output.is_cuda
     grid = lambda meta: (x.shape[0],)
     n_elements = output.numel()
-    _dequantize_block_rowwise[grid](x, state_x, output, 1./127, K=x.shape[1], n_elements=n_elements)
+    _dequantize_block_rowwise[grid](x, state_x, output, 1./127, K=K, M=M, FBLOCK_SIZE=fblock_size, n_elements=n_elements)
     return output
 
 def block_quantize_dequantize_is_close():
@@ -299,14 +367,34 @@ def block_quantize_dequantize_is_close():
     print(x)
     return torch.allclose(a, x)
 
-# print(block_quantize_dequantize_is_close())
+print(block_quantize_dequantize_is_close())
 
+def block_matmul_is_close():
+    w = 253
+    h = 258
+    k = 234
+    a = torch.randn((w, k), device="cuda", dtype=torch.float16)
+    b = torch.randn((h, k), device="cuda", dtype=torch.float16)
+    y, state_x = quantize_block_rowwise(a)
+    z, state_w = quantize_block_rowwise(b)
+    x = int8_matmul_block64_rowwise_dequantize(y, z.t(), state_x, state_w)
+    c = torch.matmul(a, b.t())
+    print(c)
+    print(x)
+    return torch.allclose(c, x)
 
+print(block_matmul_is_close())
+
+def fast_matmulT(a, b):
+    y, state_x = quantize_block_rowwise(a)
+    z, state_w = quantize_block_rowwise(b)
+    x = int8_matmul_block64_rowwise_dequantize(y, z.t(), state_x, state_w)
+    return x
 
 @triton.testing.perf_report(
     triton.testing.Benchmark(
         x_names=['M', 'N', 'K'],  # Argument names to use as an x-axis for the plot
-        x_vals=[512 * i for i in range(2, 10)],  # Different possible values for `x_name`
+        x_vals=[512 * i for i in range(14, 18)],  # Different possible values for `x_name`
         line_arg='provider',  # Argument name whose value corresponds to a different line in the plot
         # Possible values for `line_arg`
         line_vals=['cublas', 'triton'],
@@ -320,6 +408,7 @@ def block_quantize_dequantize_is_close():
     ))
 def benchmark(M, N, K, provider):
     print("here")
+    print(M)
     a = torch.randn((M, K), device='cuda', dtype=torch.float16)
     b = torch.randn((K, N), device='cuda', dtype=torch.float16)
     quantiles = [0.5, 0.2, 0.8]
@@ -330,10 +419,56 @@ def benchmark(M, N, K, provider):
         state_w = None
         a, state_x = quantize_block_rowwise(a)
         b, state_w = quantize_block_rowwise(b)
-        ms, min_ms, max_ms = triton.testing.do_bench(lambda: int8_matmul_block_rowwise_dequantize(a, b.t(), state_x.to(torch.int32), state_w.t().to(torch.int32)), quantiles=quantiles) 
+        ms, min_ms, max_ms = triton.testing.do_bench(lambda: int8_matmul_block64_rowwise_dequantize(a, b.t(), state_x, state_w), quantiles=quantiles)
+    # if provider == 'triton':
+        # ms, min_ms, max_ms = triton.testing.do_bench(lambda: fast_matmulT(a, b.t()), quantiles=quantiles) 
     perf = lambda ms: 2 * M * N * K * 1e-12 / (ms * 1e-3)
     return perf(ms), perf(max_ms), perf(min_ms)
 
 
 benchmark.run(show_plots=True, print_data=True)
 # benchmark.run(show_plots=True, print_data=True)
+
+
+
+
+def copy(a):
+    b = torch.clone(a)
+
+def quantise(a):
+    y, state_x = quantize_block_rowwise(a)
+
+
+@triton.testing.perf_report(
+    triton.testing.Benchmark(
+        x_names=['M', 'N', 'K'],  # Argument names to use as an x-axis for the plot
+        x_vals=[512 * i for i in range(14, 18)],  # Different possible values for `x_name`
+        line_arg='provider',  # Argument name whose value corresponds to a different line in the plot
+        # Possible values for `line_arg`
+        line_vals=['copy', 'quantise'],
+        # Label name for the lines
+        line_names=["copy", "quantise"],
+        # Line styles
+        styles=[('green', '-'), ('blue', '-')],
+        ylabel="TFLOPS",  # Label name for the y-axis
+        plot_name="quantise-performance",  # Name for the plot, used also as a file name for saving the plot.
+        args={},
+    ))
+def quantise_benchmark(M, N, K, provider):
+    print("here")
+    print(M)
+    a = torch.randn((M, K), device='cuda', dtype=torch.float16)
+    quantiles = [0.5, 0.2, 0.8]
+    if provider == 'copy':
+        ms, min_ms, max_ms = triton.testing.do_bench(lambda: copy(a), quantiles=quantiles)
+    # if provider == 'triton':
+    #     state_x = None
+    #     state_w = None
+    #     a, state_x = quantize_block_rowwise(a)
+    #     b, state_w = quantize_block_rowwise(b)
+    if provider == 'quantise':
+        ms, min_ms, max_ms = triton.testing.do_bench(lambda: quantise(a), quantiles=quantiles) 
+    perf = lambda ms: 2 * M * N * K * 1e-12 / (ms * 1e-3)
+    return perf(ms), perf(max_ms), perf(min_ms)
+
+quantise_benchmark.run(show_plots=True, print_data=True)
