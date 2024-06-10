@@ -73,3 +73,5 @@ class BlockInt8Linear(nn.Linear):
             return int8_matmul_block64_rowwise_dequantize(
                 X_int8, self.W_int8.t(), state_X, self.state_W, self.bias
             ).view(*x.size()[:-1], -1)
+
+
