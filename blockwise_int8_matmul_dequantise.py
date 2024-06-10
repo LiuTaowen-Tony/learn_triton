@@ -142,8 +142,8 @@ def _int8_matmul_block64_rowwise_dequantize(A, B, C, bias, state_x_ptr, state_w_
             b = tl.load(B)
         else:
             k_remaining = K - i * (BLOCK_K * SPLIT_K)
-            a = tl.load(A, mask=rk[None, :] < k_remaining, other=0.)
-            b = tl.load(B, mask=rk[:, None] < k_remaining, other=0.)
+            a = tl.load(A, mask=rk[None, :] < k_remaining, other=0)
+            b = tl.load(B, mask=rk[:, None] < k_remaining, other=0)
         result = tl.dot(a, b)
         
         # acc += result
@@ -159,7 +159,7 @@ def _int8_matmul_block64_rowwise_dequantize(A, B, C, bias, state_x_ptr, state_w_
     acc = acc.to(C.dtype.element_ty)
 
     if has_bias:
-        bias = tl.load(bias + rn).to(C.dtype.element_ty)
+        bias = tl.load(bias + rn, mask=rn < N, other=0).to(C.dtype.element_ty)
         acc = acc + bias[None, :]
 
     C = C + (rm[:, None] * stride_cm + rn[None, :] * stride_cn)
@@ -208,6 +208,14 @@ import triton.language as tl
 # TODO: autotune this better.
 @triton.autotune(
         configs=[
+            triton.Config({}, num_stages=1, num_warps=4),
+            triton.Config({}, num_stages=2, num_warps=4),
+            triton.Config({}, num_stages=4, num_warps=4),
+            triton.Config({}, num_stages=8, num_warps=4),
+            triton.Config({}, num_stages=1, num_warps=2),
+            triton.Config({}, num_stages=2, num_warps=2),
+            triton.Config({}, num_stages=4, num_warps=2),
+            triton.Config({}, num_stages=8, num_warps=2),
             triton.Config({}, num_stages=1, num_warps=8),
             triton.Config({}, num_stages=2, num_warps=8),
             triton.Config({}, num_stages=4, num_warps=8),
@@ -252,7 +260,7 @@ def _quantize_block_rowwise(
 def ceil_div(n, d):
     return -(n // -d)
 
-def quantize_block_rowwise(x: torch.Tensor, fblock_size=64):
+def quantize_block_rowwise(x: torch.Tensor, fblock_size=128):
     m, k = x.shape
 
     output = torch.empty(*x.shape, device=x.device, dtype=torch.int8)
@@ -387,7 +395,7 @@ def dequantize_block_rowwise(x: torch.Tensor, state_x: torch.Tensor, fblock_size
 
 # print(block_quantize_dequantize_is_close())
 
-def block_matmul_is_close(w = 253, h = 258, k = 234):
+def block_matmul_is_close(w = 256, h = 256, k = 234):
     a = torch.randn((w, k), device="cuda", dtype=torch.float16)
     b = torch.randn((h, k), device="cuda", dtype=torch.float16)
     a_int8, a_state = quantize_block_rowwise(a)
@@ -399,8 +407,8 @@ def block_matmul_is_close(w = 253, h = 258, k = 234):
     print(torch.max(c - c_hat))
 
 block_matmul_is_close()
-block_matmul_is_close(32, 65, 75)
-block_matmul_is_close(452, 129, 45)
+block_matmul_is_close(128, 256, 75)
+block_matmul_is_close(384, 128, 45)
 
 
 
@@ -412,7 +420,7 @@ def fast_matmulT(a, b):
 @triton.testing.perf_report(
     triton.testing.Benchmark(
         x_names=['M', 'N', 'K'],  # Argument names to use as an x-axis for the plot
-        x_vals=[256 * i for i in range(2, 11)],  # Different possible values for `x_name`
+        x_vals=[256 * i for i in range(2, 12)],  # Different possible values for `x_name`
         line_arg='provider',  # Argument name whose value corresponds to a different line in the plot
         # Possible values for `line_arg`
         line_vals=['cublas', 'blockwise_int8', 'blockwise_int8_quantise'],
