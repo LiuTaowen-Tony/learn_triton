@@ -48,6 +48,15 @@ def get_configs_io_bound():
         triton.Config({'BLOCK_M': 256, 'BLOCK_N': 64, 'BLOCK_K': 128, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
         triton.Config({'BLOCK_M': 64, 'BLOCK_N': 256, 'BLOCK_K': 128, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
         triton.Config({'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 128, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 64, 'BLOCK_K': 128, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
+        triton.Config({'BLOCK_M': 64, 'BLOCK_N': 128, 'BLOCK_K': 128, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 32, 'BLOCK_K': 128, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
+        triton.Config({'BLOCK_M': 64, 'BLOCK_N': 32, 'BLOCK_K': 128, 'SPLIT_K': 1}, num_stages=5, num_warps=2),
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 256, 'BLOCK_K': 128, 'SPLIT_K': 1}, num_stages=3, num_warps=8),
+        triton.Config({'BLOCK_M': 256, 'BLOCK_N': 128, 'BLOCK_K': 128, 'SPLIT_K': 1}, num_stages=3, num_warps=8),
+        triton.Config({'BLOCK_M': 256, 'BLOCK_N': 64, 'BLOCK_K': 128, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
+        triton.Config({'BLOCK_M': 64, 'BLOCK_N': 256, 'BLOCK_K': 128, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 128, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
         triton.Config({'BLOCK_M': 128, 'BLOCK_N': 64, 'BLOCK_K': 64, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
         triton.Config({'BLOCK_M': 64, 'BLOCK_N': 128, 'BLOCK_K': 64, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
         triton.Config({'BLOCK_M': 128, 'BLOCK_N': 32, 'BLOCK_K': 64, 'SPLIT_K': 1}, num_stages=4, num_warps=4),
@@ -98,13 +107,13 @@ def _int8_matmul_rowwise_dequantize_slow(A, B, C, bias, state_x_ptr, state_w_ptr
     rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
 
-    divfactor = divfactor.to(tl.float16)
-    w_factor = tl.load(state_w_ptr + rbn).to(tl.float16)[None, :]
-    x_factor = tl.load(state_x_ptr + ram).to(tl.float16)[:, None]
+    divfactor = divfactor.to(tl.bfloat16)
+    w_factor = tl.load(state_w_ptr + rbn).to(tl.bfloat16)[None, :]
+    x_factor = tl.load(state_x_ptr + ram).to(tl.bfloat16)[:, None]
 
     # factors = w_factor * x_factor
     # acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=ACC_TYPE)
-    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float16)
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
     for k in range(0, tl.cdiv(K, BLOCK_K * SPLIT_K)):
         if EVEN_K:
             a = tl.load(A)
@@ -114,7 +123,7 @@ def _int8_matmul_rowwise_dequantize_slow(A, B, C, bias, state_x_ptr, state_w_ptr
             a = tl.load(A, mask=rk[None, :] < k_remaining, other=0.)
             b = tl.load(B, mask=rk[:, None] < k_remaining, other=0.)
         result = tl.dot(a, b)
-        acc +=  (w_factor * x_factor * (result)).to(tl.float16)
+        acc +=  (w_factor * x_factor * (result)).to(tl.float32)
 
         A += BLOCK_K * SPLIT_K * stride_ak
         B += BLOCK_K * SPLIT_K * stride_bk
